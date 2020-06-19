@@ -4,4 +4,6 @@ documentation: https://exchangeratesapi.io/ <b/>
 
 fxratesdb - use ECB's database to input your query result to a cross rate normalised DataFrame transformations.<b/>
 
-rate types: end of year spot rates 1, end of year averages 2. 
+rate types: 
+1 end of year spot rates
+2 end of year averages 
