@@ -5,14 +5,10 @@ Created on Fri Jun 19 00:06:21 2020
 @author: n.jafri
 
 """
-crossrates_annualdf = crossrates_df('ecbfxrates.xlsx', 'A (Annual)', 'A (Average)')
-crossrates_spotratedf = crossrates_df('ecbfxrates.xlsx', 'D (Daily)', 'A (Average)')
-joincrossrates_df = joincrossrates_df(crossrates_annualdf, crossrates_spotratedf)
-savetoexcel_df(joincrossrates_df, r'fxrates.xlsx')
-
 import pandas as pd
 import numpy as np
 import os
+import re
 
 def crossrates_df(excelfilexlsx, frequencytype, seriestype):
     '''
@@ -37,11 +33,10 @@ def crossrates_df(excelfilexlsx, frequencytype, seriestype):
     
     ecbfxrates = pd.read_excel(excelfilexlsx, index_col=None)
     
-    ratedf = ecbfxrates.loc[(ecbfxrates['Frequency']==frequencytype) & 
-                                (ecbfxrates['Time period or range'].dt.day==np.max(ecbfxrates['Time period or range'].dt.day)) &
-                                (ecbfxrates['Time period or range'].dt.month==np.max(ecbfxrates['Time period or range'].dt.month)) & 
-                                (ecbfxrates['Series variation - EXR context']==seriestype)]
-
+    ratedf = ecbfxrates.loc[(ecbfxrates['Frequency']==frequencytype) & (ecbfxrates['Series variation - EXR context']==seriestype)]
+    ratedf['Year'] = ratedf['Time period or range'].dt.year
+    ratedf = ratedf.loc[ratedf.groupby(['Year', 'Currency'])['Time period or range'].idxmax()]
+    
     #remove unneccessary columns
     ratedf = ratedf[['Frequency', 'Currency', 'Series variation - EXR context', 'Time period or range', 'Observation value']].copy()
         
@@ -57,7 +52,7 @@ def crossrates_df(excelfilexlsx, frequencytype, seriestype):
     
     ratedf.drop(columns={'Observation value_x', 'Observation value_y', 'Frequency_y', 'Series variation - EXR context_y'}, inplace=True)
     ratedf.rename(columns={'Currency_x': 'Currency_To', 'Currency_y': 'Currency_From', 'Frequency_x': 'Frequency', 'Series variation - EXR context_x': 'Series variation - EXR context'}, inplace=True)
-       
+               
     return ratedf
     
 def joincrossrates_df(spotratedf, averagedf):
@@ -77,8 +72,28 @@ def joincrossrates_df(spotratedf, averagedf):
         DataFrame with combined .
 
     '''
-    spotratedf['Rate Type'] = 'Spot Rate Average'
+    spotratedf['Rate Type'] = 'Spot Rate Average' #rate types specified before union
     averagedf['Rate Type'] = 'Annual Average'
+    
+    #ISO Codes in one column and description in another column
+    averagedf['Currency_To_Description'] = averagedf['Currency_To'].str.replace(r'[^(]*\(|\)[^)]*', '')
+    spotratedf['Currency_To_Description'] = spotratedf['Currency_To'].str.replace(r'[^(]*\(|\)[^)]*', '')
+    averagedf['Currency_To'] = averagedf['Currency_To'].astype(str).str[:3]
+    spotratedf['Currency_To'] = spotratedf['Currency_To'].astype(str).str[:3]
+    
+    averagedf['Currency_From_Description'] = averagedf['Currency_From'].str.replace(r'[^(]*\(|\)[^)]*', '')
+    spotratedf['Currency_From_Description'] = spotratedf['Currency_From'].str.replace(r'[^(]*\(|\)[^)]*', '')
+    averagedf['Currency_From'] = averagedf['Currency_From'].astype(str).str[:3]
+    spotratedf['Currency_From'] = spotratedf['Currency_From'].astype(str).str[:3]
+         
+    averagedf = averagedf[['Rate Type', 'Frequency', 'Series variation - EXR context', 'Time period or range',
+                  'Currency_To', 'Currency_To_Description', 'Currency_From', 'Currency_From_Description',
+                  'To', 'From']].copy()
+    
+    spotratedf = spotratedf[['Rate Type', 'Frequency', 'Series variation - EXR context', 'Time period or range',
+                  'Currency_To', 'Currency_To_Description', 'Currency_From', 'Currency_From_Description',
+                  'To', 'From']].copy()
+    
     frames = [spotratedf, averagedf]
     result_df = pd.concat(frames)
     
@@ -99,6 +114,6 @@ def savetoexcel_df(result_df, filenamexlsx):
     prints path of where the Excel file is saved.
 
     '''
-    result_df.to_excel(filenamexlsx, index=False, header=True)
+    result_df.to_excel(filenamexlsx, index=False, header=True, sheet_name='fx rates data')
     
     print('Saved in path: {}'.format(os.getcwd()))
